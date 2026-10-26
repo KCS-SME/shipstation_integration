@@ -8,3 +8,6 @@ shipstation_integration/public/dist
 shipstation_integration/public/node_modules
 node_modules
 .cursor
+/memory.md
+memory.md
+__pycache__/

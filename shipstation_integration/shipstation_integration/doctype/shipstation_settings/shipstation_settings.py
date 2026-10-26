@@ -40,7 +40,7 @@ class ShipstationSettings(Document):
 
 	def onload(self):
 		if self.carrier_data:
-			self.set_onload("carriers", self.carrier_data())
+			self.set_onload("carriers", self.get_carrier_data())
 		if self.shipstation_api_carrier_data:
 			self.set_onload("api_carriers", self.api_carrier_data())
 
@@ -67,13 +67,73 @@ class ShipstationSettings(Document):
 	def get_orders(self):
 		if not self.enable_legacy_api:
 			frappe.throw(_("Legacy API is not enabled"))
-		list_orders(self)
+		res = list_orders(self)
+		if res and isinstance(res, dict):
+			if res.get("errors"):
+				frappe.msgprint(
+					"<br>".join(res["errors"]),
+					title=_("Order Fetch Errors"),
+					indicator="red",
+				)
+			if res.get("errors") and not res.get("total_created") and not res.get("total_fetched"):
+				frappe.msgprint(
+					_("Window: {0} to {1}<br>Failed to fetch orders from ShipStation.").format(
+						res.get("window_start"), res.get("window_end")
+					),
+					title=_("Order Sync Failed"),
+					indicator="red",
+				)
+			else:
+				frappe.msgprint(
+					_("Window: {0} to {1}<br>Orders Fetched: {2}<br>Orders Created: {3}<br>Orders Skipped: {4}").format(
+						res.get("window_start"), res.get("window_end"), res.get("total_fetched", 0), res.get("total_created", 0), res.get("total_skipped", 0)
+					),
+					title=_("Order Sync Complete"),
+					indicator="green" if not res.get("errors") else "orange",
+				)
+		return res
 
 	@frappe.whitelist()
 	def get_shipments(self):
 		if not self.enable_legacy_api:
 			frappe.throw(_("Legacy API is not enabled"))
-		list_shipments(self)
+		from shipstation_integration.shipstation.shipments_poller import poll_settings_shipments
+
+		res = poll_settings_shipments(self, synchronous=True)
+		if res.get("errors"):
+			frappe.msgprint(
+				"<br>".join(res["errors"]),
+				title=_("Shipment Fetch Errors"),
+				indicator="red",
+			)
+		if res.get("errors") and res.get("stores_attempted", 0) > 0 and res.get("stores_succeeded", 0) == 0:
+			frappe.msgprint(
+				_("Window: {0} to {1}<br>Failed to poll shipments for configured stores.").format(
+					res["window_start"], res["window_end"]
+				),
+				title=_("Shipment Sync Failed"),
+				indicator="red",
+			)
+		else:
+			frappe.msgprint(
+				_(
+					"Window: {0} to {1}<br>"
+					"Labelled Shipments Fetched: {2}<br>"
+					"Labelled Shipments Processed: {3}<br>"
+					"Shipped Orders Fetched: {4}<br>"
+					"Shipped Orders Processed: {5}"
+				).format(
+					res["window_start"],
+					res["window_end"],
+					res.get("shipments_fetched", 0),
+					res.get("shipments_processed", 0),
+					res.get("orders_fetched", 0),
+					res.get("orders_processed", 0),
+				),
+				title=_("Shipment Sync Complete"),
+				indicator="green" if not res.get("errors") else "orange",
+			)
+		return res
 
 	@frappe.whitelist()
 	def get_tags(self):
@@ -356,6 +416,25 @@ class ShipstationSettings(Document):
 		if not self.enable_legacy_api:
 			return self
 		stores = self.client().list_stores(show_inactive=False)
+		default_company = (
+			frappe.defaults.get_user_default("Company")
+			or frappe.get_cached_value("Global Defaults", None, "default_company")
+		)
+		difference_account = (
+			frappe.db.get_value(
+				"Account",
+				{"company": default_company, "is_group": 0, "disabled": 0, "account_type": "Discount"},
+				"name",
+			)
+			or frappe.db.get_value(
+				"Account",
+				{"company": default_company, "is_group": 0, "disabled": 0, "account_type": "Income Account"},
+				"name",
+			)
+			or frappe.get_cached_value("Company", default_company, "default_income_account")
+			if default_company
+			else None
+		)
 		for store in stores:
 			store_exists = False
 			for ss_store in self.shipstation_stores:
@@ -381,6 +460,7 @@ class ShipstationSettings(Document):
 						"store_id": store.store_id,
 						"marketplace_name": get_marketplace(id=store.account_name).sales_partner,
 						"store_name": store.store_name,
+						"difference_account": difference_account,
 					},
 				)
 			elif "Shopify" in store.marketplace_name:
@@ -392,6 +472,7 @@ class ShipstationSettings(Document):
 						"store_id": store.store_id,
 						"marketplace_name": store.marketplace_name,
 						"store_name": store.store_name,
+						"difference_account": difference_account,
 					},
 				)
 			else:
@@ -402,6 +483,7 @@ class ShipstationSettings(Document):
 						"store_id": store.store_id,
 						"marketplace_name": store.marketplace_name,
 						"store_name": store.store_name,
+						"difference_account": difference_account,
 					},
 				)
 
@@ -421,13 +503,13 @@ class ShipstationSettings(Document):
 
 		return f"{len(products.results)} product(s) imported successfully"
 
-	def carrier_data(self):
+	def get_carrier_data(self):
 		if not self.carrier_data:
 			return []
 		return json.loads(self.carrier_data)
 
 	def get_carrier_services(self, carrier):
-		carrier_data = self.carrier_data()
+		carrier_data = self.get_carrier_data()
 		if not carrier_data:
 			return ""
 		for ss_carrier in carrier_data:
@@ -437,7 +519,7 @@ class ShipstationSettings(Document):
 
 	def get_codes(self, carrier, service, package):
 		_carrier, _service, _package = None, None, "Package"
-		carrier_data = self.carrier_data()
+		carrier_data = self.get_carrier_data()
 		if not carrier_data:
 			return _carrier, _service, _package
 		for ss_carrier in carrier_data:
@@ -458,9 +540,14 @@ class ShipstationSettings(Document):
 		if not self.enabled:
 			return
 
-		# Only register v1 webhooks if legacy API is enabled
 		if self.enable_legacy_api:
-			WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_webhook"
+			secret = self.get_password("webhook_secret", raise_exception=False)
+			if not secret:
+				frappe.msgprint(_("Webhook Secret is required to register ShipStation webhooks"), alert=True)
+				self.add_v2_webhooks()
+				return
+
+			WEBHOOK_RECEIVER_URL = f"{frappe.utils.get_url()}/api/method/shipstation_integration.webhook_receiver.shipstation_webhook?token={secret}"
 			WEBHOOK_TYPES = [
 				"ORDER_NOTIFY",
 				"SHIP_NOTIFY",
