@@ -14,6 +14,7 @@
 		"enable_legacy_api",
 		"api_key",
 		"api_secret",
+		"webhook_secret",
 		"column_break_legacy",
 		"get_items",
 		"get_orders",
@@ -234,6 +235,12 @@
 			"label": "Enable ShipStation API v2"
 		},
 		{
+			"depends_on": "eval:doc.enable_legacy_api",
+			"fieldname": "webhook_secret",
+			"fieldtype": "Password",
+			"label": "Webhook Secret"
+		},
+		{
 			"depends_on": "eval:doc.enable_shipstation_api",
 			"fieldname": "shipstation_api_key",
 			"fieldtype": "Password",
@@ -278,7 +285,7 @@
 	],
 	"hide_toolbar": 1,
 	"links": [],
-	"modified": "2026-01-31 13:00:00.000000",
+	"modified": "2026-10-26 15:35:00.000000",
 	"modified_by": "Administrator",
 	"module": "Shipstation Integration",
 	"name": "Shipstation Settings",

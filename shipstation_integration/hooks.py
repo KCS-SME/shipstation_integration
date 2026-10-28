@@ -25,6 +25,9 @@ app_icon = "octicon octicon-file-directory"
 app_color = "grey"
 app_email = "support@agritheory.dev"
 app_license = "MIT"
+required_apps = ["kr_automation"]
+
+ignore_links_on_delete = ["Shipstation Poll Checkpoint"]
 
 # Setup Wizard
 # ------------
@@ -131,7 +134,10 @@ scheduler_events = {
 		"shipstation_integration.tags.queue_tags",
 		"shipstation_integration.orders.queue_orders",
 		"shipstation_integration.shipments.queue_shipments",
-	]
+	],
+	"hourly": [
+		"shipstation_integration.shipstation.shipments_poller.poll_shipments",
+	],
 }
 
 # Testing
