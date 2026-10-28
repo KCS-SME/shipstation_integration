@@ -116,6 +116,46 @@ def apply_address_fields(
 		frappe.log_error(title="Error saving Shipstation Address", message=e)
 
 
+def get_default_customer_group() -> str:
+	if frappe.db.exists("Customer Group", "ShipStation") and not frappe.db.get_value("Customer Group", "ShipStation", "is_group"):
+		return "ShipStation"
+
+	selling_cg = frappe.db.get_single_value("Selling Settings", "customer_group")
+	if selling_cg and not frappe.db.get_value("Customer Group", selling_cg, "is_group"):
+		return selling_cg
+
+	non_group = frappe.db.get_value("Customer Group", {"is_group": 0}, "name")
+	if non_group:
+		return non_group
+
+	root = frappe.db.get_value("Customer Group", {"is_group": 1}, "name") or "All Customer Groups"
+	new_cg = frappe.get_doc(
+		{
+			"doctype": "Customer Group",
+			"customer_group_name": "ShipStation",
+			"parent_customer_group": root,
+			"is_group": 0,
+		}
+	)
+	new_cg.insert(ignore_permissions=True)
+	return new_cg.name
+
+
+def get_default_territory() -> str:
+	if frappe.db.exists("Territory", "United States") and not frappe.db.get_value("Territory", "United States", "is_group"):
+		return "United States"
+
+	selling_territory = frappe.db.get_single_value("Selling Settings", "territory")
+	if selling_territory and not frappe.db.get_value("Territory", selling_territory, "is_group"):
+		return selling_territory
+
+	non_group = frappe.db.get_value("Territory", {"is_group": 0}, "name")
+	if non_group:
+		return non_group
+
+	return "All Territories"
+
+
 def create_customer(order: "ShipStationOrder"):
 	ship_to = getattr(order, "ship_to", None)
 	ship_to_name = getattr(ship_to, "name", None) if ship_to else None
@@ -137,12 +177,8 @@ def create_customer(order: "ShipStationOrder"):
 	cust.shipstation_customer_id = order.customer_id
 	cust.customer_name = customer_name
 	cust.customer_type = "Individual"
-	cust.customer_group = "ShipStation" if frappe.db.exists("Customer Group", "ShipStation") else (
-		frappe.db.get_single_value("Selling Settings", "customer_group") or "All Customer Groups"
-	)
-	cust.territory = "United States" if frappe.db.exists("Territory", "United States") else (
-		frappe.db.get_single_value("Selling Settings", "territory") or "All Territories"
-	)
+	cust.customer_group = get_default_customer_group()
+	cust.territory = get_default_territory()
 	try:
 		cust.save()
 		frappe.db.commit()

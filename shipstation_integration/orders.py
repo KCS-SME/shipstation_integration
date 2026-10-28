@@ -61,6 +61,7 @@ def list_orders(
 
 	total_fetched = 0
 	total_created = 0
+	total_updated = 0
 	total_skipped = 0
 	errors = []
 
@@ -118,6 +119,17 @@ def list_orders(
 
 					total_fetched += 1
 					try:
+						existing_so = find_existing_sales_order(order)
+						if existing_so:
+							update_existing_sales_order(existing_so, order, store, sss_doc)
+							total_updated += 1
+							continue
+
+						is_ebay_store = store.marketplace_name and "ebay" in store.marketplace_name.lower()
+						if is_ebay_store:
+							total_skipped += 1
+							continue
+
 						if validate_order(sss_doc, order, store):
 							should_create_order = True
 
@@ -135,7 +147,7 @@ def list_orders(
 						frappe.db.rollback()
 						order_ref = getattr(order, "order_number", None) or getattr(order, "order_id", "unknown")
 						frappe.log_error(
-							title=f"Error creating Sales Order for ShipStation order {order_ref}",
+							title=f"Error syncing ShipStation order {order_ref}",
 							message=frappe.get_traceback(),
 						)
 						errors.append(f"Order {order_ref}: {order_err}")
@@ -147,9 +159,101 @@ def list_orders(
 		"window_end": end_param,
 		"total_fetched": total_fetched,
 		"total_created": total_created,
+		"total_updated": total_updated,
 		"total_skipped": total_skipped,
 		"errors": errors,
 	}
+
+
+def find_existing_sales_order(order: "ShipStationOrder") -> str | None:
+	"""
+	Locates an existing Sales Order in ERPNext:
+	1. Matches eBay Order ID: custom_ebay_order_reference == order_number or order_id
+	2. Matches Direct Sales: Sales Order name == order_key or order_number
+	3. Matches previously synced: shipstation_order_id == order_id
+	4. Matches marketplace_order_id == order_number
+	"""
+	order_number = getattr(order, "order_number", None)
+	order_id = getattr(order, "order_id", None)
+	order_key = getattr(order, "order_key", None)
+
+	# 1. Match eBay: custom_ebay_order_reference
+	for ref in [order_number, order_id, order_key]:
+		if ref:
+			ref_str = str(ref).strip()
+			so_name = frappe.db.get_value(
+				"Sales Order",
+				{"custom_ebay_order_reference": ref_str, "docstatus": ["!=", 2]},
+				"name",
+			)
+			if so_name:
+				return so_name
+
+	# 2. Match Direct Sales by SO name
+	for ref in [order_key, order_number]:
+		if ref:
+			ref_str = str(ref).strip()
+			if frappe.db.exists("Sales Order", ref_str):
+				if frappe.db.get_value("Sales Order", ref_str, "docstatus") != 2:
+					return ref_str
+
+	# 3. Match by existing shipstation_order_id
+	if order_id:
+		so_name = frappe.db.get_value(
+			"Sales Order",
+			{"shipstation_order_id": order_id, "docstatus": ["!=", 2]},
+			"name",
+		)
+		if so_name:
+			return so_name
+
+	# 4. Match by marketplace_order_id
+	if order_number:
+		ref_str = str(order_number).strip()
+		so_name = frappe.db.get_value(
+			"Sales Order",
+			{"marketplace_order_id": ref_str, "docstatus": ["!=", 2]},
+			"name",
+		)
+		if so_name:
+			return so_name
+
+	return None
+
+
+def update_existing_sales_order(
+	so_name: str,
+	order: "ShipStationOrder",
+	store: "ShipstationStore",
+	settings: "ShipstationSettings",
+):
+	"""Syncs ShipStation data into an existing Sales Order without recreating it."""
+	updates = {
+		"shipstation_order_id": getattr(order, "order_id", None),
+		"shipstation_store_name": store.store_name,
+		"marketplace": store.marketplace_name,
+		"marketplace_order_id": str(getattr(order, "order_number", "")).strip() if getattr(order, "order_number", None) else None,
+		"shipstation_customer_notes": getattr(order, "customer_notes", None),
+		"shipstation_internal_notes": getattr(order, "internal_notes", None),
+		"shipstation_shipment_status": getattr(order, "order_status", None),
+		"integration_doctype": "Shipstation Settings",
+		"integration_doc": store.parent,
+	}
+
+	if getattr(order, "ship_date", None):
+		try:
+			updates["delivery_date"] = getdate(order.ship_date)
+		except Exception:
+			pass
+
+	so_meta = frappe.get_meta("Sales Order")
+	valid_updates = {k: v for k, v in updates.items() if v is not None and so_meta.has_field(k)}
+
+	for fieldname, val in valid_updates.items():
+		frappe.db.set_value("Sales Order", so_name, fieldname, val, update_modified=False)
+
+	frappe.db.commit()
+	return so_name
 
 
 def validate_order(
@@ -160,11 +264,22 @@ def validate_order(
 	if not order:
 		return False
 
+	# If this store is an eBay store, never create new Sales Orders
+	if store.marketplace_name and "ebay" in store.marketplace_name.lower():
+		return False
+
+	# If order already exists in ERPNext via eBay reference, do not create new SO
+	order_ref = getattr(order, "order_number", None) or getattr(order, "order_id", None)
+	if order_ref and frappe.db.exists(
+		"Sales Order", {"custom_ebay_order_reference": str(order_ref).strip(), "docstatus": ["!=", 2]}
+	):
+		return False
+
 	if frappe.db.get_value("Sales Order", {"shipstation_order_id": order.order_id, "docstatus": ["!=", 2]}):
 		return False
 
 	if order.order_number and frappe.db.get_value(
-		"Sales Order", {"marketplace_order_id": order.order_number, "docstatus": ["!=", 2]}
+		"Sales Order", {"marketplace_order_id": str(order.order_number).strip(), "docstatus": ["!=", 2]}
 	):
 		return False
 

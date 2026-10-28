@@ -242,7 +242,7 @@ def poll_store_shipped_orders(
 				continue
 
 			order_number = norm.get("order_number")
-			sales_orders = shipments_inbound.find_sales_orders(order_number)
+			sales_orders = shipments_inbound.find_sales_orders(order_number, order_id=order_id)
 			if len(sales_orders) != 1:
 				shipments_inbound.upsert_exception(
 					None,

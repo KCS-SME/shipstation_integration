@@ -11,21 +11,30 @@ from shipstation_integration.shipstation.shipments_adapter import (
 NO_DATE = "1900-01-01"
 
 
-def find_sales_orders(order_number):
-	if not order_number:
-		return []
+def find_sales_orders(order_number, order_id=None):
 	filters = {"docstatus": ["!=", 2]}
-	names = frappe.get_all("Sales Order", filters={**filters, "name": order_number}, pluck="name")
-	if names:
-		return names
-	names = frappe.get_all(
-		"Sales Order", filters={**filters, "custom_ebay_order_reference": order_number}, pluck="name"
-	)
-	if names:
-		return names
-	return frappe.get_all(
-		"Sales Order", filters={**filters, "marketplace_order_id": order_number}, pluck="name"
-	)
+	if order_number:
+		ref = str(order_number).strip()
+		names = frappe.get_all("Sales Order", filters={**filters, "name": ref}, pluck="name")
+		if names:
+			return names
+		names = frappe.get_all(
+			"Sales Order", filters={**filters, "custom_ebay_order_reference": ref}, pluck="name"
+		)
+		if names:
+			return names
+		names = frappe.get_all(
+			"Sales Order", filters={**filters, "marketplace_order_id": ref}, pluck="name"
+		)
+		if names:
+			return names
+	if order_id:
+		names = frappe.get_all(
+			"Sales Order", filters={**filters, "shipstation_order_id": order_id}, pluck="name"
+		)
+		if names:
+			return names
+	return []
 
 
 def upsert_exception(
@@ -127,7 +136,7 @@ def process_shipment(shipment, source, synchronous: bool = False):
 		LABEL_SHIPMENT_SOURCE if shipment_id else EXTERNAL_SHIPMENT_SOURCE
 	)
 	is_external = shipment_source == EXTERNAL_SHIPMENT_SOURCE
-	orders = find_sales_orders(order_number)
+	orders = find_sales_orders(order_number, order_id=order_id)
 
 	if len(orders) != 1:
 		upsert_exception(
@@ -241,3 +250,67 @@ def process_shipment(shipment, source, synchronous: bool = False):
 			pluck="name",
 		):
 			frappe.db.set_value("ShipStation Shipment Exception", name, "status", "Resolved")
+
+	# Auto-create Delivery Note per SDD Section 9
+	if shipment.get("voided"):
+		if shipment_id:
+			existing_dn = frappe.db.get_value(
+				"Delivery Note",
+				{"shipstation_shipment_id": str(shipment_id), "docstatus": 1},
+				"name",
+			)
+			if existing_dn:
+				frappe.get_doc("Delivery Note", existing_dn).cancel()
+	else:
+		create_delivery_note_for_shipment(so, shipment)
+
+
+def create_delivery_note_for_shipment(so, shipment) -> str | None:
+	shipment_id = shipment.get("shipment_id")
+	if not shipment_id:
+		return None
+
+	# Idempotency check: don't create duplicate Delivery Note for same shipment_id
+	existing_dn = frappe.db.get_value(
+		"Delivery Note",
+		{"shipstation_shipment_id": str(shipment_id), "docstatus": ["!=", 2]},
+		"name",
+	)
+	if existing_dn:
+		return existing_dn
+
+	if so.docstatus != 1 or flt(so.per_delivered) >= 100:
+		return None
+
+	from erpnext.selling.doctype.sales_order.sales_order import make_delivery_note
+
+	try:
+		dn = make_delivery_note(so.name)
+		dn.shipstation_shipment_id = str(shipment_id)
+		if shipment.get("order_id"):
+			dn.shipstation_order_id = str(shipment.get("order_id"))
+		if shipment.get("tracking_number"):
+			dn.tracking_number = shipment.get("tracking_number")
+
+		# Direct Sales partial shipment handling (eBay orders fulfilled in full)
+		shipment_items = shipment.get("items")
+		if shipment_items and not so.get("custom_ebay_order_reference"):
+			shipped_map = {it["item_code"]: flt(it["quantity"]) for it in shipment_items if it.get("item_code")}
+			if shipped_map:
+				filtered_items = []
+				for row in dn.items:
+					if row.item_code in shipped_map:
+						row.qty = min(row.qty, shipped_map[row.item_code])
+						filtered_items.append(row)
+				if filtered_items:
+					dn.items = filtered_items
+
+		dn.insert(ignore_permissions=True)
+		dn.submit()
+		return dn.name
+	except Exception as e:
+		frappe.log_error(
+			title=f"Error auto-creating Delivery Note for SO {so.name}",
+			message=frappe.get_traceback(),
+		)
+		raise e
