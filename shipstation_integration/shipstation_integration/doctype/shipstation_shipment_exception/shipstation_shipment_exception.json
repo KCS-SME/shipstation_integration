@@ -9,6 +9,7 @@
   "shipment_id",
   "order_id",
   "order_number",
+  "tracking_number",
   "reason",
   "matched_sales_orders",
   "source",
@@ -32,11 +33,16 @@
    "label": "Order Number"
   },
   {
+   "fieldname": "tracking_number",
+   "fieldtype": "Data",
+   "label": "Tracking Number"
+  },
+  {
    "fieldname": "reason",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Reason",
-   "options": "No Match\nMultiple Match"
+   "options": "No Match\nMultiple Match\nCancelled After Label\nCancel Failed"
   },
   {
    "fieldname": "matched_sales_orders",
@@ -47,7 +53,7 @@
    "fieldname": "source",
    "fieldtype": "Select",
    "label": "Source",
-   "options": "Webhook\nPoller"
+   "options": "Webhook\nPoller\nOutbound"
   },
   {
    "fieldname": "status",

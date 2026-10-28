@@ -42,6 +42,8 @@
 		"reset_warehouses",
 		"sb_stores",
 		"shipstation_stores",
+		"sb_channels",
+		"channels",
 		"sb_carriers",
 		"carrier_data",
 		"carriers_html"
@@ -111,6 +113,17 @@
 			"fieldtype": "Table",
 			"label": "Shipstation Stores",
 			"options": "Shipstation Store"
+		},
+		{
+			"fieldname": "sb_channels",
+			"fieldtype": "Section Break",
+			"label": "Channels"
+		},
+		{
+			"fieldname": "channels",
+			"fieldtype": "Table",
+			"label": "Channels",
+			"options": "Shipstation Channel"
 		},
 		{
 			"fieldname": "carrier_data",

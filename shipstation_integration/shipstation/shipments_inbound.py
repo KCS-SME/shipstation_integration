@@ -29,10 +29,25 @@ def find_sales_orders(order_number):
 
 
 def upsert_exception(
-	shipment_id, order_number, reason, matched_sales_orders, source, order_id=None
+	shipment_id,
+	order_number,
+	reason,
+	matched_sales_orders,
+	source,
+	order_id=None,
+	tracking_number=None,
 ):
 	filters = {"status": "Open"}
-	if shipment_id:
+	if source == "Outbound":
+		filters["source"] = "Outbound"
+		filters["reason"] = reason
+		if shipment_id:
+			filters["shipment_id"] = shipment_id
+		elif order_id:
+			filters["order_id"] = order_id
+		else:
+			filters["order_number"] = order_number
+	elif shipment_id:
 		filters["shipment_id"] = shipment_id
 	elif order_id:
 		filters["order_id"] = order_id
@@ -57,10 +72,13 @@ def upsert_exception(
 		exc.order_id = order_id
 		exc.status = "Open"
 	exc.order_number = order_number
+	if tracking_number:
+		exc.tracking_number = tracking_number
 	exc.reason = reason
 	exc.matched_sales_orders = matched_sales_orders
 	exc.source = source
 	exc.save(ignore_permissions=True)
+	return exc
 
 
 def _find_shipment_row(so, shipment_id, order_id, is_external):

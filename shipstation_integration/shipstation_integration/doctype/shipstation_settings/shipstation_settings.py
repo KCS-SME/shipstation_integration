@@ -47,6 +47,7 @@ class ShipstationSettings(Document):
 	def validate(self):
 		self.validate_label_generation()
 		self.validate_enabled_stores()
+		self.validate_channels()
 
 	def before_insert(self):
 		self.validate_api_connection()
@@ -329,6 +330,19 @@ class ShipstationSettings(Document):
 				store.create_sales_invoice = False
 				store.create_delivery_note = False
 				store.create_shipment = False
+
+	def validate_channels(self):
+		seen_channels = set()
+		for row in getattr(self, "channels", []):
+			if row.channel in seen_channels:
+				frappe.throw(_("Channel {0} is duplicated in Channels table").format(row.channel))
+			seen_channels.add(row.channel)
+			if row.send_to_shipstation and not (row.store_id or "").strip():
+				frappe.throw(
+					_("Store ID is required for channel {0} when Send to ShipStation is enabled").format(
+						row.channel
+					)
+				)
 
 	def validate_api_connection(self):
 		if not self.enabled:
