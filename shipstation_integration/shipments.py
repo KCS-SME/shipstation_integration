@@ -193,21 +193,33 @@ def create_sales_invoice(shipment: "ShipStationOrder", store: "ShipstationStore"
 def create_delivery_note(
 	shipment: "ShipStationOrder", sales_invoice: Optional["SalesInvoice"] = None
 ):
-
-	existing_dn = frappe.get_value("Delivery Note", {"shipstation_order_id": shipment.order_id})
-
-	if existing_dn:
-		return frappe.get_doc("Delivery Note", existing_dn)
+	shipment_id = getattr(shipment, "shipment_id", None)
+	if shipment_id:
+		existing_dn = frappe.get_value(
+			"Delivery Note",
+			{"shipstation_shipment_id": str(shipment_id), "docstatus": ["!=", 2]},
+		)
+		if existing_dn:
+			return frappe.get_doc("Delivery Note", existing_dn)
 
 	if sales_invoice:
 		dn: "DeliveryNote" = make_delivery_from_invoice(sales_invoice.name)
 	else:
-		so_name = frappe.get_value("Sales Order", {"shipstation_order_id": shipment.order_id})
-		if not so_name:
-			return
+		from shipstation_integration.shipstation.shipments_inbound import find_sales_orders
+		order_number = getattr(shipment, "order_number", None)
+		order_id = getattr(shipment, "order_id", None)
+		matched_orders = find_sales_orders(order_number, order_id=order_id)
+		if not matched_orders:
+			return None
+		so_name = matched_orders[0]
 		dn: "DeliveryNote" = make_delivery_from_order(so_name)
 
-	dn.shipstation_shipment_id = shipment.shipment_id
+	if shipment_id:
+		dn.shipstation_shipment_id = str(shipment_id)
+	if getattr(shipment, "order_id", None):
+		dn.shipstation_order_id = str(shipment.order_id)
+	if getattr(shipment, "tracking_number", None):
+		dn.tracking_number = shipment.tracking_number
 
 	dn.save()
 	dn.submit()

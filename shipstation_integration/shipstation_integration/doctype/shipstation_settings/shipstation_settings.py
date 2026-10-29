@@ -86,8 +86,19 @@ class ShipstationSettings(Document):
 				)
 			else:
 				frappe.msgprint(
-					_("Window: {0} to {1}<br>Orders Fetched: {2}<br>Orders Created: {3}<br>Orders Skipped: {4}").format(
-						res.get("window_start"), res.get("window_end"), res.get("total_fetched", 0), res.get("total_created", 0), res.get("total_skipped", 0)
+					_(
+						"Window: {0} to {1}<br>"
+						"Orders Fetched: {2}<br>"
+						"Orders Synced (Updated): {3}<br>"
+						"Orders Created: {4}<br>"
+						"Orders Skipped: {5}"
+					).format(
+						res.get("window_start"),
+						res.get("window_end"),
+						res.get("total_fetched", 0),
+						res.get("total_updated", 0),
+						res.get("total_created", 0),
+						res.get("total_skipped", 0),
 					),
 					title=_("Order Sync Complete"),
 					indicator="green" if not res.get("errors") else "orange",
