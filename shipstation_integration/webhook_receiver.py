@@ -65,6 +65,7 @@ def shipstation_webhook():
 		new_flow_applies = bool(store_id and store and store.store_id == store_id and store.track_shipments)
 		legacy_flow_applies = bool(
 			store
+			and not store.track_shipments
 			and store.enable_shipments
 			and any(
 				[
@@ -198,42 +199,25 @@ def resolve_store(store_id: str | None, resource_type: str = "SHIP_NOTIFY", toke
 		)
 		return None
 
-	store_records = frappe.get_all(
-		"Shipstation Store",
-		filters={"store_id": str(store_id)},
-		fields=["name", "parent"],
-	)
-	if not store_records:
-		frappe.log_error(
-			title=f"ShipStation {resource_type} callback with unknown store id",
-			message=(
-				f"Store id {store_id!r} is not configured in Shipstation Settings. "
-				"Processing was stopped."
-			),
-		)
-		return None
+			if (
+				frappe.db.exists(
+					"Delivery Note",
+					{"docstatus": 1, "shipstation_order_id": ss_shipment.order_id},
+				)
 
-	target_store_name = None
-	if len(store_records) == 1:
-		target_store_name = store_records[0].name
-	elif token:
-		for rec in store_records:
-			if rec.parent and frappe.db.exists("Shipstation Settings", rec.parent):
-				parent_doc = frappe.get_doc("Shipstation Settings", rec.parent)
-				sec = parent_doc.get_password("webhook_secret", raise_exception=False)
-				if sec and hmac.compare_digest(str(token), str(sec)):
-					target_store_name = rec.name
-					break
-
-	if not target_store_name:
-		frappe.log_error(
-			title=f"ShipStation {resource_type} callback store cannot be associated with settings",
-			message=(
-				f"Store id {store_id!r} matches multiple or unassociated store configurations and could "
-				"not be resolved with the provided credentials. Processing was stopped."
-			),
-		)
-		return None
+			if (
+				store
+				and not store.track_shipments
+				and store.enable_shipments
+				and any(
+					[
+						store.create_sales_invoice,
+						store.create_delivery_note,
+						store.create_shipment,
+					]
+				)
+			):
+				continue
 
 	store = frappe.get_doc("Shipstation Store", target_store_name)
 	if not store.parent or not frappe.db.exists("Shipstation Settings", store.parent):
