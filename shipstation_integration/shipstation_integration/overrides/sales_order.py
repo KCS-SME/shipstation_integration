@@ -6,6 +6,27 @@ from erpnext.selling.doctype.sales_order.sales_order import SalesOrder
 
 
 class ShipStationSalesOrder(SalesOrder):
+	def before_insert(self):
+		super().before_insert()
+		if self.amended_from:
+			self.shipstation_order_id = None
+			self.shipstation_order_key = None
+			self.shipstation_store_name = None
+			self.shipstation_tracking_number = None
+			self.shipstation_shipment_status = None
+			self.set("shipments", [])
+			for item in self.get("items", []):
+				item.shipstation_order_item_id = None
+
+	def on_cancel(self):
+		super().on_cancel()
+		if self.shipstation_order_key:
+			frappe.enqueue(
+				"shipstation_integration.shipstation.orders_outbound.cancel_shipstation_order_job",
+				sales_order_name=self.name,
+				enqueue_after_commit=True,
+			)
+
 	def calculate_commission(self):
 		commission_formula = frappe.get_cached_value(
 			"Sales Partner", self.sales_partner, "commission_formula"

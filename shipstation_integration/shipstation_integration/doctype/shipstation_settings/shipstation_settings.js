@@ -165,6 +165,7 @@ frappe.ui.form.on('Shipstation Settings', {
 			doc: frm.doc,
 			method: 'get_orders',
 			freeze: true,
+			freeze_message: __('Getting orders from ShipStation...'),
 		})
 	},
 
@@ -178,6 +179,7 @@ frappe.ui.form.on('Shipstation Settings', {
 			doc: frm.doc,
 			method: 'get_shipments',
 			freeze: true,
+			freeze_message: __('Getting shipments from ShipStation...'),
 		})
 	},
 

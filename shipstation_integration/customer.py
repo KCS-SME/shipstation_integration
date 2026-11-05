@@ -116,9 +116,51 @@ def apply_address_fields(
 		frappe.log_error(title="Error saving Shipstation Address", message=e)
 
 
+def get_default_customer_group() -> str:
+	if frappe.db.exists("Customer Group", "ShipStation") and not frappe.db.get_value("Customer Group", "ShipStation", "is_group"):
+		return "ShipStation"
+
+	selling_cg = frappe.db.get_single_value("Selling Settings", "customer_group")
+	if selling_cg and not frappe.db.get_value("Customer Group", selling_cg, "is_group"):
+		return selling_cg
+
+	non_group = frappe.db.get_value("Customer Group", {"is_group": 0}, "name")
+	if non_group:
+		return non_group
+
+	root = frappe.db.get_value("Customer Group", {"is_group": 1}, "name") or "All Customer Groups"
+	new_cg = frappe.get_doc(
+		{
+			"doctype": "Customer Group",
+			"customer_group_name": "ShipStation",
+			"parent_customer_group": root,
+			"is_group": 0,
+		}
+	)
+	new_cg.insert(ignore_permissions=True)
+	return new_cg.name
+
+
+def get_default_territory() -> str:
+	if frappe.db.exists("Territory", "United States") and not frappe.db.get_value("Territory", "United States", "is_group"):
+		return "United States"
+
+	selling_territory = frappe.db.get_single_value("Selling Settings", "territory")
+	if selling_territory and not frappe.db.get_value("Territory", selling_territory, "is_group"):
+		return selling_territory
+
+	non_group = frappe.db.get_value("Territory", {"is_group": 0}, "name")
+	if non_group:
+		return non_group
+
+	return "All Territories"
+
+
 def create_customer(order: "ShipStationOrder"):
+	ship_to = getattr(order, "ship_to", None)
+	ship_to_name = getattr(ship_to, "name", None) if ship_to else None
 	customer_name = (
-		order.customer_email or order.customer_id or order.ship_to.name or frappe.generate_hash("", 10)
+		ship_to_name or order.customer_email or order.customer_id or frappe.generate_hash("", 10)
 	)
 
 	if (
@@ -135,8 +177,8 @@ def create_customer(order: "ShipStationOrder"):
 	cust.shipstation_customer_id = order.customer_id
 	cust.customer_name = customer_name
 	cust.customer_type = "Individual"
-	cust.customer_group = "ShipStation"
-	cust.territory = "United States"
+	cust.customer_group = get_default_customer_group()
+	cust.territory = get_default_territory()
 	try:
 		cust.save()
 		frappe.db.commit()
@@ -155,9 +197,9 @@ def create_customer(order: "ShipStationOrder"):
 		if customer_primary_contact:
 			cust.customer_primary_contact = customer_primary_contact.name
 
-	if order.ship_to.street1:
+	if getattr(order, "ship_to", None) and getattr(order.ship_to, "street1", None):
 		create_address(order.ship_to, customer_name, order.customer_email, "Shipping")
-	if order.bill_to.street1:
+	if getattr(order, "bill_to", None) and getattr(order.bill_to, "street1", None):
 		create_address(order.bill_to, order.customer_username, order.customer_email, "Billing")
 
 	try:
@@ -165,7 +207,8 @@ def create_customer(order: "ShipStationOrder"):
 		frappe.db.commit()
 		return cust
 	except Exception as e:
-		frappe.log_error(title="Error saving Shipstation Customer", message=e)
+		frappe.log_error(title="Error saving Shipstation Customer", message=frappe.get_traceback())
+		raise
 
 
 def create_contact(order: "ShipStationOrder", customer_name: str):
@@ -173,7 +216,9 @@ def create_contact(order: "ShipStationOrder", customer_name: str):
 	if contact:
 		return frappe._dict({"name": contact})
 	cont: "Contact" = frappe.new_doc("Contact")
-	cont.first_name = order.bill_to.name or "Not Provided"
+	bill_to = getattr(order, "bill_to", None)
+	bill_name = getattr(bill_to, "name", None) if bill_to else None
+	cont.first_name = bill_name or "Not Provided"
 	for char in "<>":
 		cont.first_name = cont.first_name.replace(char, "")
 	if customer_name:
@@ -189,22 +234,3 @@ def create_contact(order: "ShipStationOrder", customer_name: str):
 
 def overwrite_validate_phone_number(data, throw=False):
 	return True
-
-
-def get_billing_address(customer_name: str):
-	dynamic_link = frappe.qb.DocType("Dynamic Link")
-	address = frappe.qb.DocType("Address")
-
-	billing_address = (
-		frappe.qb.from_(dynamic_link)
-		.from_(address)
-		.select(address.name)
-		.where(
-			(dynamic_link.link_doctype == "Customer")
-			& (dynamic_link.link_name == "customer_name")
-			& (address.address_type == "Billing")
-		)
-		.limit(1)
-		.run(as_dict=True)
-	)
-	return billing_address[0].get("name") if billing_address else None

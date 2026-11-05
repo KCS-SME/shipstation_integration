@@ -4,7 +4,7 @@ version = "16.0.1"
 description = "Shipstation integration for ERPNext"
 requires-python = ">=3.14,<3.15"
 readme = "README.md"
-dependencies = [ "setuptools<81", "shipstation-client @ git+https://github.com/AgriTheory/shipstation-client.git@master#egg=shipstation-client", "shipengine>=1.0.0",]
+dependencies = [ "setuptools<81", "shipstation-client @ git+https://github.com/KCS-SME/shipstation-client.git@master#egg=shipstation-client", "shipengine>=1.0.0",]
 [[project.authors]]
 name = "AgriTheory"
 email = "support@agritheory.dev"

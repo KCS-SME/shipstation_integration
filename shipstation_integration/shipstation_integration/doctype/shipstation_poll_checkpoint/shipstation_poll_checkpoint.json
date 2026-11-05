@@ -1,0 +1,83 @@
+{
+	"actions": [],
+	"creation": "2026-10-22 00:00:00.000000",
+	"doctype": "DocType",
+	"editable_grid": 1,
+	"engine": "InnoDB",
+	"field_order": [
+		"settings",
+		"store_id",
+		"column_break_cp",
+		"shipment_checkpoint",
+		"order_checkpoint"
+	],
+	"fields": [
+		{
+			"fieldname": "settings",
+			"fieldtype": "Link",
+			"in_list_view": 1,
+			"label": "Shipstation Settings",
+			"options": "Shipstation Settings"
+		},
+		{
+			"fieldname": "store_id",
+			"fieldtype": "Data",
+			"in_list_view": 1,
+			"label": "Store ID",
+			"reqd": 1
+		},
+		{
+			"fieldname": "column_break_cp",
+			"fieldtype": "Column Break"
+		},
+		{
+			"description": "End of the last fully processed window of the labelled shipment polling",
+			"fieldname": "shipment_checkpoint",
+			"fieldtype": "Datetime",
+			"label": "Shipment Checkpoint"
+		},
+		{
+			"description": "End of the last fully processed window of the shipped order polling",
+			"fieldname": "order_checkpoint",
+			"fieldtype": "Datetime",
+			"label": "Order Checkpoint"
+		}
+	],
+	"index_web_pages_for_search": 1,
+	"istable": 0,
+	"links": [],
+	"modified": "2026-10-22 00:00:00.000000",
+	"modified_by": "Administrator",
+	"module": "Shipstation Integration",
+	"name": "Shipstation Poll Checkpoint",
+	"owner": "Administrator",
+	"permissions": [
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "System Manager",
+			"share": 1,
+			"write": 1
+		},
+		{
+			"create": 1,
+			"delete": 1,
+			"email": 1,
+			"export": 1,
+			"print": 1,
+			"read": 1,
+			"report": 1,
+			"role": "Administrator",
+			"share": 1,
+			"write": 1
+		}
+	],
+	"sort_field": "modified",
+	"sort_order": "DESC",
+	"states": []
+}
