@@ -34,6 +34,8 @@
 		"api_carriers_html",
 		"sb_filters",
 		"since_date",
+		"repair_order_prefix",
+		"notification_role",
 		"column_break_lzby",
 		"sb_warehouses",
 		"shipstation_warehouses",
@@ -162,6 +164,21 @@
 			"fieldname": "since_date",
 			"fieldtype": "Date",
 			"label": "Since Date"
+		},
+		{
+			"default": "RO-",
+			"description": "Prefix used to identify repair shipments (e.g. RO-) when no Sales Order matches.",
+			"fieldname": "repair_order_prefix",
+			"fieldtype": "Data",
+			"label": "Repair Order Prefix"
+		},
+		{
+			"default": "Stock Manager",
+			"description": "Role to receive notifications when an Insufficient Stock exception is created.",
+			"fieldname": "notification_role",
+			"fieldtype": "Link",
+			"label": "Insufficient Stock Notification Role",
+			"options": "Role"
 		},
 		{
 			"default": "0",

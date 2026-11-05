@@ -64,12 +64,16 @@ def list_shipments(
 
 		store: "ShipstationStore"
 		for store in sss_doc.shipstation_stores:
-			if not store.enable_shipments or not any(
-				[
-					store.create_sales_invoice,
-					store.create_delivery_note,
-					store.create_shipment,
-				]
+			if (
+				getattr(store, "track_shipments", 0)
+				or not store.enable_shipments
+				or not any(
+					[
+						store.create_sales_invoice,
+						store.create_delivery_note,
+						store.create_shipment,
+					]
+				)
 			):
 				continue
 
@@ -134,6 +138,10 @@ def create_erpnext_shipment(
 
 
 def cancel_voided_shipments(shipment: "ShipStationOrder", settings: "ShipstationSettings"):
+	store_id = getattr(getattr(shipment, "advanced_options", None), "store_id", None) or getattr(shipment, "store_id", None)
+	if store_id and any(str(s.store_id) == str(store_id) and getattr(s, "track_shipments", 0) for s in (settings.shipstation_stores or [])):
+		return
+
 	if settings.shipstation_user:
 		frappe.set_user(settings.shipstation_user)
 
@@ -283,6 +291,8 @@ def create_shipment(
 
 def create_shipment_from_webhook(shipment: dict, store: str, settings: str):
 	store = frappe.get_doc("Shipstation Store", store)
+	if getattr(store, "track_shipments", 0):
+		return
 	settings = frappe.get_doc("Shipstation Settings", settings)
 	shipment = ShipStationOrder().json(shipment)
 

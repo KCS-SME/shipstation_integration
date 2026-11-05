@@ -21,11 +21,32 @@ def shipstation_webhook():
 	if not resource_url:
 		return
 
-	parsed_qs = parse_qs(urlparse(data["resource_url"]).query)
-	store_id = parsed_qs.get("storeID", [None])[0]
-	import_batch = parsed_qs.get("importBatch", [None])[0]
-	store = frappe.get_doc("Shipstation Store", {"store_id": store_id})
-	sss_doc = frappe.get_doc("Shipstation Settings", store.parent)
+	secret = sss_doc.get_password("webhook_secret", raise_exception=False)
+	if not secret:
+		frappe.throw(_("Webhook secret is not configured"), frappe.PermissionError)
+
+	if not token or not hmac.compare_digest(str(token), str(secret)):
+		frappe.throw(_("Invalid webhook token"), frappe.PermissionError)
+
+	if resource_type in ["SHIP_NOTIFY", "ITEM_SHIP_NOTIFY"]:
+		new_flow_applies = bool(store_id and store and store.store_id == store_id and store.track_shipments)
+		legacy_flow_applies = bool(
+			store
+			and not store.track_shipments
+			and store.enable_shipments
+			and any(
+				[
+					store.create_sales_invoice,
+					store.create_delivery_note,
+					store.create_shipment,
+				]
+			)
+		)
+		if not (new_flow_applies or legacy_flow_applies):
+			return
+	elif resource_type == "ORDER_NOTIFY":
+		if not (store and store.enable_orders):
+			return
 
 	if not sss_doc.enabled or not sss_doc.enable_legacy_api:
 		return
@@ -88,7 +109,18 @@ def shipstation_webhook():
 					"Delivery Note",
 					{"docstatus": 1, "shipstation_order_id": ss_shipment.order_id},
 				)
-				and not shipment.voided
+
+			if (
+				store
+				and not store.track_shipments
+				and store.enable_shipments
+				and any(
+					[
+						store.create_sales_invoice,
+						store.create_delivery_note,
+						store.create_shipment,
+					]
+				)
 			):
 				continue
 
