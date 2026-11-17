@@ -3,3 +3,6 @@ shipstation_integration.patches.update_shipstation_warehouses
 shipstation_integration.patches.delete_delivery_note_shipment_custom_fields
 shipstation_integration.patches.add_custom_queue
 shipstation_integration.patches.add_user_uom_fields
+
+[post_model_sync]
+shipstation_integration.patches.create_insufficient_stock_notification

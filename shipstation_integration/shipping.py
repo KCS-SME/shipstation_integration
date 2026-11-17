@@ -357,15 +357,17 @@ def fetch_shipment(delivery_note: str):
 			if existing_shipments:
 				continue
 
+			store_id = getattr(getattr(shipment, "advanced_options", None), "store_id", None) or getattr(shipment, "store_id", None)
+			store: "ShipstationStore" = next(
+				(store for store in sss_doc.shipstation_stores if str(store.store_id) == str(store_id)),
+				None,
+			)
+			if store and getattr(store, "track_shipments", 0):
+				continue
+
 			if shipment.voided:
 				cancel_voided_shipments(shipment, sss_doc)
 			else:
-				store_id = shipment.advanced_options.store_id
-				store: "ShipstationStore" = next(
-					(store for store in sss_doc.shipstation_stores if store.store_id == store_id),
-					None,
-				)
-
 				delivery_note.db_set("shipstation_shipment_id", shipment.shipment_id)
 				shipment = create_erpnext_shipment(shipment, store, sss_doc)
 				if shipment:

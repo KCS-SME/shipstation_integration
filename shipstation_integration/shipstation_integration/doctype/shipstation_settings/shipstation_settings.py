@@ -63,6 +63,11 @@ class ShipstationSettings(Document):
 		if self.enabled:
 			self.add_webhooks()
 		self.create_physical_dimensions_for_parcel_templates()
+		if getattr(self, "notification_role", None) and frappe.db.exists("Notification", "Insufficient Stock Shipment Exception"):
+			doc = frappe.get_doc("Notification", "Insufficient Stock Shipment Exception")
+			if doc.recipients:
+				doc.recipients[0].receiver_by_role = self.notification_role
+				doc.save(ignore_permissions=True)
 
 	@frappe.whitelist()
 	def get_orders(self):

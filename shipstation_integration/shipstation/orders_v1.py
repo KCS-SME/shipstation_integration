@@ -138,21 +138,39 @@ def fetch_orders(client, query: dict) -> list[dict]:
 	return v1_api.paginate(client, V1_ORDERS_ENDPOINT, query, "orders", "order")
 
 
-def from_api_dict(order: dict) -> dict:
-	order_id = order.get("orderId")
+def from_api_dict(order) -> dict:
+	if isinstance(order, dict):
+		order_id = order.get("orderId") or order.get("order_id")
+		order_number = order.get("orderNumber") or order.get("order_number")
+		order_status = order.get("orderStatus") or order.get("order_status")
+		carrier_code = order.get("carrierCode") or order.get("carrier_code")
+		service_code = order.get("serviceCode") or order.get("service_code")
+		ship_date = order.get("shipDate") or order.get("ship_date")
+		modify_date = order.get("modifyDate") or order.get("modify_date")
+		items = order.get("items")
+	else:
+		order_id = getattr(order, "order_id", None) or getattr(order, "orderId", None)
+		order_number = getattr(order, "order_number", None) or getattr(order, "orderNumber", None)
+		order_status = getattr(order, "order_status", None) or getattr(order, "orderStatus", None)
+		carrier_code = getattr(order, "carrier_code", None) or getattr(order, "carrierCode", None)
+		service_code = getattr(order, "service_code", None) or getattr(order, "serviceCode", None)
+		ship_date = getattr(order, "ship_date", None) or getattr(order, "shipDate", None)
+		modify_date = getattr(order, "modify_date", None) or getattr(order, "modifyDate", None)
+		items = getattr(order, "items", None)
+
 	return {
 		"shipment_id": None,
 		"order_id": str(order_id) if order_id is not None else None,
-		"order_number": order.get("orderNumber"),
-		"order_status": order.get("orderStatus"),
+		"order_number": order_number,
+		"order_status": order_status,
 		"shipment_source": EXTERNAL_SHIPMENT_SOURCE,
 		"voided": False,
 		"tracking_number": None,
-		"carrier_code": order.get("carrierCode"),
-		"service_code": order.get("serviceCode"),
-		"ship_date": shipments_adapter.trim_date(order.get("shipDate")),
-		"modify_date": shipments_adapter.trim_date(order.get("modifyDate")),
+		"carrier_code": carrier_code,
+		"service_code": service_code,
+		"ship_date": shipments_adapter.trim_date(ship_date),
+		"modify_date": shipments_adapter.trim_date(modify_date),
 		"shipment_cost": None,
 		"label_id": None,
-		"items": shipments_adapter.map_items(order.get("items")),
+		"items": shipments_adapter.map_items(items),
 	}
